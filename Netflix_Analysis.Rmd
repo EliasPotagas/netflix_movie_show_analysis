@@ -1,0 +1,348 @@
+---
+title: "Netflix_Analysis"
+output: html_document
+date: "2023-09-25"
+---
+
+```{r}
+#Load libraries
+library(tidyverse)
+library(tidytext)
+library(wordcloud)
+library(lubridate)
+library(plotly)
+library(RColorBrewer)
+library(naniar)
+library(scales)
+library(janitor)
+library(DT)
+library(ggplot2)
+```
+
+```{r}
+df= read.csv("netflix_titles.csv")
+head(df)
+```
+
+```{r}
+glimpse(df)
+```
+
+```{r}
+#View dataframe
+View(df)
+```
+
+```{r}
+#Fix date column
+df <- df %>%
+  mutate(date_added = mdy(date_added)) %>% clean_names()
+str(df$date_added)
+
+
+df[df == ""] <- NA
+glimpse(df)
+```
+```{r}
+gg_miss_which(df)
+```
+```{r}
+gg_miss_upset(df)
+```
+```{r}
+df %>% count(type, sort = T) %>%
+  mutate(perc = paste0(round(n / sum(n) * 100,0),'%')) %>%
+  ggplot(aes(x = "", y = perc, fill = type)) + geom_bar(
+    stat = "identity",
+    width = 1,
+    color = "steelblue",
+    size = 1
+  ) +
+  coord_polar("y", start = 0) +
+  geom_text(
+    aes(y = perc, label = perc),
+    position = position_stack(vjust = 0.5),
+    size = 8,
+    col = "white",
+    fontface = "bold"
+  ) +
+  scale_fill_manual (values = c('red', 'blue')) +
+  theme_void() +
+  labs(
+    title = "More Movies on Netflix than TV shows?",
+    subtitle = "Proportion of Movies to TV shows",
+    caption = "Kaggle: Netflix Movies and TV Shows",
+    fill = ""
+  )
+```
+```{r}
+df <- df %>%
+  mutate(diff_years =  year(date_added) - release_year)
+
+frequency_table = table(df$diff_years)
+frequency_df = as.data.frame(frequency_table)
+
+barplot(frequency_df$Freq, names.arg = frequency_df$Var1, 
+        main = "Analyzing the Gap Between Release Date and Year Added",
+        xlab = "Years",
+        ylab = "Frequency",
+        col = "skyblue",
+        las = 0,  # Rotate x-axis labels for better readability
+        cex.names = 0.6)  # Adjust the size of x-axis labels
+
+
+```
+
+```{r}
+unique_values <- unique(df$diff_years)
+unique_count <- length(unique_values)
+df <- df %>%
+  mutate(diff_years =  year(date_added) - release_year)
+
+ggplot(data=df) + geom_histogram(aes(x=diff_years),bins=unique_count,fill="lightblue",color="black") +
+  labs(
+    title = "Analyzing the Gap Between Release Date and Year Added",
+    x = "Years",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+```{r}
+df %>% filter(diff_years > 50) %>%
+  arrange(desc(diff_years))
+```
+```{r}
+#Rating by type
+frequency_table <- table(df$rating,df$type)
+frequency_df <- as.data.frame(frequency_table)
+  
+summary_df <- frequency_df %>%
+  mutate(Var1 = as.character(Var1), Var2 = as.character(Var2)) %>%
+  rename(rating = Var1, type = Var2) %>%
+  filter(!is.na(rating), Freq > 2) %>%
+  group_by(rating, type) %>%
+  mutate(rating = ifelse(Freq < 5,"Other",rating)) %>%
+  group_by(rating, type)
+
+summary_df %>% select(type, rating, Freq) %>%
+  filter(!is.na(rating)) %>%
+  group_by(rating,type) %>% 
+  ggplot(aes(x = type, y= Freq, fill = rating)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Rental Ratios for Casual and Member Customers",
+       x = "Day of the Week",
+       y = "Rental Ratio",
+       fill = "Customer Type") +
+  theme_minimal() 
+```
+
+```{r}
+df %>% select(rating,type) %>%
+  filter(!is.na(rating)) %>%
+  mutate(rating = fct_lump(rating, 5)) %>%
+  group_by(rating, type) %>%
+  summarise(count = n()) %>%
+  arrange(count) %>%
+  ggplot(aes(x = type, y= count, fill = rating)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Rental Ratios for Casual and Member Customers",
+       x = "Day of the Week",
+       y = "Rental Ratio",
+       fill = "Customer Type") +
+  theme_minimal() + 
+  geom_text(aes(label = count), position = position_dodge(width = 0.9), vjust = -0.5)
+```
+
+```{r}
+df %>% select(country) %>%
+  filter(!is.na(country)) %>%
+  mutate(country = fct_lump(country, 10)) %>%
+  group_by(country) %>%
+  summarise(count = n()) %>%
+  arrange(count) %>%
+  ggplot(aes(x=count, y=reorder(country,count))) +
+  geom_bar(stat = "identity", position = "dodge", fill = "lightblue", color = "black") +
+  labs(title = "Distitbution of Movies by Country",
+       x = "Count",
+       y = "Country",
+       fill = "") +
+  theme_minimal() 
+```
+```{r}
+df %>% select(country) %>%
+  filter(!is.na(country)) %>%
+  mutate(country = fct_lump(country, 45)) %>%
+  group_by(country) %>%
+  summarise(count = n()) %>%
+  arrange(count) %>%
+  ggplot(aes(x=count, y=reorder(country,count))) +
+  geom_bar(stat = "identity", position = "dodge", fill = "lightblue", color = "black") +
+  labs(title = "Distitbution of Movies by Country",
+       x = "Count",
+       y = "Country",
+       fill = "") +
+  theme_minimal() 
+```
+```{r}
+df %>% filter(!is.na(director)) %>%  
+  group_by(director) %>%
+  summarise(count = n()) %>%
+  filter(count > 10) %>%
+  arrange(count) %>%
+  ggplot(aes(x=reorder(director,-count), y=count, fill = director)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Number of Movies per Director > 10",
+       x = "Directors",
+       y = "Number of Movies",
+       fill = "") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_text(aes(label = count), position = position_dodge(width = 0.9), vjust = 1.5) + 
+  guides(fill = FALSE)
+```
+
+```{r}
+df %>% filter(!is.na(director)) %>%  
+  group_by(director, country) %>%
+  summarise(count = n()) %>%
+  filter(country == "United States", count > 10) %>%
+  arrange(count) %>%
+  ggplot(aes(x=reorder(director,-count), y=count, fill = director)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Number of Movies > 10 per Director in the U.S",
+       x = "Directors",
+       y = "Number of Movies",
+       fill = "") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_text(aes(label = count), position = position_dodge(width = 0.9), vjust = 1.5) + 
+  guides(fill = FALSE)
+```
+```{r}
+movies <- df %>% select(type,duration,title) %>%
+  filter(!is.na(duration),type == "Movie") %>%
+  mutate(duration = parse_number(duration))
+
+  ggplot(data = movies,aes(x = duration)) +
+  geom_histogram(
+    bins = 20,  # Number of bins for the histogram
+    fill = "blue",  # Bar fill color
+    color = "black",  # Bar border color
+    alpha = 0.7  # Transparency of bars
+  ) +
+  labs(
+    title = "Distribution of Movie Durations",
+    x = "Duration (minutes)",
+    y = "Frequency"
+  ) +
+  theme_minimal() 
+```
+```{r}
+movies %>% select(title,duration) %>%
+  filter(duration > 200) %>%
+  arrange(duration)
+```
+
+```{r}
+shows <- df %>% select(type,title,duration) %>%
+  filter(!is.na(duration),type == "TV Show") %>% 
+  drop_na() %>% 
+  mutate(duration = parse_number(duration)) %>%
+  arrange(duration)
+
+shows %>%
+  select(duration) %>%
+  count(duration, sort = TRUE) %>%
+  ggplot(aes(x = as.factor(duration), y = n, label = n)) +
+  geom_bar(stat = "identity", fill = "lightblue") +  
+  geom_text(vjust = -0.5, size = 3, color = "black") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(x = "Season duration",
+       y = "Count",
+       title = "Season Distribution",
+       subtitle = "Bar Plot, Season Distribution",
+       caption = "Kaggle: Netflix Movies and TV Shows",
+       fill = "")
+
+```
+```{r}
+shows %>% select(type,title,duration) %>%
+  filter(duration > 10)
+```
+```{r}
+df %>% select(release_year) %>%
+  filter(!is.na(release_year)) %>%
+  group_by(release_year) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x=release_year, y = count)) +
+  geom_bar(stat="identity")
+```
+
+```{r}
+df %>% select(date_added) %>%
+  filter(!is.na(date_added)) %>%
+  mutate(year_added = year(date_added)) %>%
+  group_by(year_added) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x=as.factor(year_added), y = count)) +
+  geom_bar(stat="identity")  
+```
+```{r}
+#Most frequent words in description variable For Movies (word cloud)
+movie_com_words <- df %>% select(description, type) %>%
+  filter(type == "Movie") %>%
+  unnest_tokens(word, description) %>%
+  anti_join(stop_words)
+
+count_movie_words <- movie_com_words %>%
+  count(word)
+count_movie_words
+
+wordcloud(words = count_movie_words$word,  
+          freq = count_movie_words$n, 
+          min.freq = 50,  
+          max.words = nrow(count_movie_words), 
+          random.order = FALSE,  
+          rot.per = 0.1,  
+          colors = brewer.pal(8, "Dark2"))
+```
+
+```{r}
+#Most frequent words in description variable For Movies (word cloud)
+tv_shows_com_words <- df %>% select(description, type) %>%
+  filter(type == "TV Show") %>%
+  unnest_tokens(word, description) %>%
+  anti_join(stop_words)
+
+count_tv_show_words <- tv_shows_com_words %>%
+  count(word)
+count_tv_show_words
+
+wordcloud(words = count_tv_show_words$word,  
+          freq = count_tv_show_words$n, 
+          min.freq = 50,  
+          max.words = nrow(count_tv_show_words), 
+          random.order = FALSE,  
+          rot.per = 0.1,  
+          colors = brewer.pal(8, "Dark2"))
+```
+```{r}
+#Most frequent words in description variable For Movies (word cloud)
+com_words <- df %>% select(description, type) %>%
+  unnest_tokens(word, description) %>%
+  anti_join(stop_words)
+
+count_words <- com_words %>%
+  count(word)
+count_words
+
+wordcloud(words = count_words$word,  
+          freq = count_words$n, 
+          min.freq = 50,  
+          max.words = nrow(count_words), 
+          random.order = FALSE,  
+          rot.per = 0.1,  
+          colors = brewer.pal(8, "Dark2"))
+```
+
